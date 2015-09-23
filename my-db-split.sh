@@ -50,6 +50,7 @@ function main() {
 	echo "Staging location         ${MY_TMP}"
 	echo "Using max_target_seqs    ${my_max_target_seqs}"
 	echo "Number of threads        ${MY_BLAST_THREADS}"
+	echo "Number of threads merge  ${my_blast_merge_threads}"
     fi
 
     db_stage
@@ -160,6 +161,15 @@ function parse_options() {
 	if (( $my_num_alignments > $my_max_target_seqs )); then
 	    my_max_target_seqs="${my_num_alignments}"
 	fi
+    fi
+
+    # Allow the caller to vary the number of threads at merge time
+
+    if [ -z "${MY_BLAST_MERGE_THREADS}" ]; then
+	# Default to...
+	my_blast_merge_threads=${MY_BLAST_THREADS}
+    else
+	my_blast_merge_threads=${MY_BLAST_MERGE_THREADS}
     fi
 
     return
@@ -400,18 +410,19 @@ function blast_process_input_file_parallel() {
 	gilist_all="./${f}-gilist-global.msk"
 	sort -u ${f}-gilist-*.msk > ${gilist_all}
 
-	# Note that this search (from original on disk) is limited
+	# Note that this search (from original on disk) can be limited
 	# to one thread irrespective of what is used above. This
 	# can prevent contention and is usually significantly quicker
 	# than using all the threads available.
 
 	export BLASTDB=${MY_BLASTDB}
 
-	${MY_BLAST} -num_threads 1 -query ${f} \
+	${MY_BLAST} -num_threads ${my_blast_merge_threads} -query ${f} \
 	    -dbsize ${my_dbsize} -gilist ${gilist_all} -out ${stub}.blast
 
 	ENDTIME=$(date +%s)
 	echo "-> Time to merge $f   $(($ENDTIME-$STARTTIME)) s"
+	rm -f ${gilist_all}
     fi
 
     # Clean up
@@ -419,7 +430,6 @@ function blast_process_input_file_parallel() {
     mpi_barrier
 
     rm -f ${gilist}
-    rm -f ${gilist_all}
 
     return 0
 }
